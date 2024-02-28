@@ -4,6 +4,7 @@ import logging
 import datetime
 import csv
 from time import sleep
+from multiprocessing import Process
 
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 DATA_FORMAT = "%Y-%m-%d_%H:%M:%S"
@@ -30,6 +31,27 @@ CMD_MIN_INTERVAL_TIME_MS = 40 / 1000
 def get_datetime_now():
     now = datetime.datetime.now()
     return now.strftime("%Y-%m-%d %H:%M:%S %f").split(' ')
+
+
+class WriteProcess(Process):
+    def __init__(self, file_name):
+        super(WriteProcess, self).__init__()
+        self.file_name = file_name
+
+    def run(self):
+        print('测试%s多进程' % self.file_name)
+
+    def write_to_file(self):
+        """
+        将读取到的电流值，持续写入CSV文件中
+        :return: None
+        """
+        with open(self.file_name, 'w', newline='') as data_file:
+            for i in range(100000):
+                my_inst.select_current_value()
+                write = csv.writer(data_file)
+                write.writerow(my_inst.now_current_value)
+                sleep(CMD_MIN_INTERVAL_TIME_MS + 10 / 1000)
 
 
 class CtrlPower:
@@ -183,25 +205,29 @@ class CtrlPower:
 if __name__ == '__main__':
     args = PARSER.parse_args()
     my_inst = CtrlPower(args.IS_ForeGround_Mode)
-
     my_inst.select_power_mode()
     my_inst.select_volt_external()
-    my_inst.select_volt_value()
-    my_inst.set_volt_value(args.voltage)
-    sleep(CMD_MIN_INTERVAL_TIME_MS + 10 / 1000)
-    my_inst.select_volt_value()
-    my_inst.ctrl_output_on()
-    sleep(CMD_MIN_INTERVAL_TIME_MS + 10 / 1000)
+
+    write_process = WriteProcess(args.Dada_File)
+    write_process.start()
+    write_process.join()
 
     if my_inst.is_foreground_mode:
-        for i in range(100000):
-            my_inst.select_current_value()
-            sleep(CMD_MIN_INTERVAL_TIME_MS + 10 / 1000)
-    else:
-        # open(args.Dada_File, 'w').close()
-        with open(args.Dada_File, 'w', newline='') as data_file:
-            for i in range(100000):
-                my_inst.select_current_value()
-                write = csv.writer(data_file)
-                write.writerow(my_inst.now_current_value)
+        while True:
+            option = input('请根据示例输入操作方式："v 12.0"表示调整电压到12.0v \n请输入命令: ')
+            cmd_str_list = option.lstrip().rstrip().split(' ')
+            cmd_str_first_cmd = cmd_str_list[0].lower()
+            cmd_str_value = float(cmd_str_list[1])
+
+            if cmd_str_first_cmd == 'v':
+                my_inst.select_volt_value()
+                my_inst.set_volt_value(cmd_str_value)
                 sleep(CMD_MIN_INTERVAL_TIME_MS + 10 / 1000)
+                my_inst.select_volt_value()
+                my_inst.ctrl_output_on()
+                sleep(CMD_MIN_INTERVAL_TIME_MS + 10 / 1000)
+            elif option == 'e':
+                print('退出！')
+                break
+            else:
+                print('输入无效，请重新输入')
